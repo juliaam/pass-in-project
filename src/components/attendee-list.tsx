@@ -10,35 +10,102 @@ import { IconButton } from "./icon-button";
 import { Table } from "./table/table";
 import { TableHeader } from "./table/table-header";
 import { TableBody } from "./table/table-body";
-import { ChangeEvent, useState } from "react";
-import { attendees } from "../data/attendees";
+import { ChangeEvent, useEffect, useState } from "react";
 import { ptBR } from "date-fns/locale";
 import { formatDistance } from "date-fns/formatDistance";
 
-export function AttendeeList() {
+interface Attendee {
+  id: string
+  name: string
+  email: string
+  createdAt: string
+  checkedInAt: string
+}
 
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
+export function AttendeeList() {
+  const [search, setSearch] = useState(() => {
+    const url = new URL(window.location.toString());
+
+    if (url.searchParams.has("search")) {
+      return url.searchParams.get("search") ?? "";
+    }
+
+    return "";
+  });
+  const [page, setPage] = useState(() => {
+    const url = new URL(window.location.toString())
+
+    if(url.searchParams.has('page')) {
+      return Number(url.searchParams.get('page'))
+    } 
+
+    return 1
+  })
+  const [total, setTotal] = useState(0)
+  const [attendees, setAttendees] = useState<Attendee[]>([])
+
+  const totalPages = Math.ceil(total / 10)
+
+  useEffect(() => {
+    const url = new URL("http://localhost:3333/events/9e9bd979-9d10-4915-b339-3786b1634f33/attendees")
+
+    url.searchParams.set("pageIndex", String(page - 1));
+    if (search.length > 1) {
+      url.searchParams.set("query", search);
+    }
+
+    fetch(url)
+    .then((response) => response.json())
+    .then(
+      (data) => {
+        setAttendees(data.attendees)
+        setTotal(data.total)
+      }
+      )
+  }, [page, search]) 
+  // como se fosse um watch, ele vai executar a function toda 
+  // vez que tiver alguma alteração de alguma variável definida dentro do array
+
+  function setCurrentSearch(search: string) {
+    const url = new URL(window.location.toString())
+
+    url.searchParams.set('search', search)
+
+    window.history.pushState({}, "", url)
+
+    setSearch(search)
+  }
   
-  const totalPages = Math.ceil(attendees.length / 10)
+  function setCurrentPage(page: number) {
+    const url = new URL(window.location.toString())
+    url.searchParams.set('page', String(page))
+    window.history.pushState({}, "", url)
+
+    setPage(page)
+  }
+
+  function formatDate(date: string | Date) {
+    return formatDistance(new Date(date), new Date(), { addSuffix: true, locale: ptBR  })
+  }
 
   function onSearchInputChanged(event: ChangeEvent<HTMLInputElement>) {
-    setSearch(event.target.value)
+    setCurrentSearch(event.target.value)
+    setCurrentPage(1)
   }
 
   function goToFirstPage() {
-    setPage(1)
+    setCurrentPage(1)
   }
 
   function goToNextPage() {
-    setPage(page + 1)
+    setCurrentPage(page + 1)
   }
 
   function goToPreviousPage() {
-      setPage(page - 1)
+    setCurrentPage(page - 1)
   }
   function goToLastPage() {
-    setPage(totalPages)
+    setCurrentPage(totalPages)
   }
 
 
@@ -46,9 +113,10 @@ export function AttendeeList() {
     <div className="flex flex-col gap-4">
       <div className="flex gap-3 items-center">
         <h1 className="text-2xl font-bold"> Participantes </h1>
-        <div className="px-3 w-72 py-1.5 border border-white/10 rounded-lg flex items-center gap-3">
+        <div className="px-3 w-72 py-1.5 border border-white/10 rounded-lg flex items-center gap-3 ">
           <Search className="size-4 text-emerald-300" />
           <input onChange={onSearchInputChanged}
+            value={search}
             className="bg-transparent flex-1 outline-none border-0 p-0 text-sm"
             placeholder="Buscar participante..."
           />
@@ -71,7 +139,7 @@ export function AttendeeList() {
           </tr>
         </thead>
         <tbody>
-          {attendees.slice((page - 1) * 10, page * 10).map((attendee) => {
+          {attendees.map((attendee: Attendee) => {
             return (
               <tr key={attendee.id} className="border-b border-white/10 hover:bg-white/5">
                 <TableBody style={{ width: 48 }}>
@@ -87,8 +155,10 @@ export function AttendeeList() {
                     <span>{attendee.email} </span>
                   </div>
                 </TableBody>
-                <TableBody>{formatDistance(attendee.createdAt, new Date(), { addSuffix: true, locale: ptBR })}</TableBody>
-                <TableBody>{formatDistance(attendee.checkedInAt, new Date(), { addSuffix: true, locale: ptBR  })}</TableBody>
+                <TableBody>{formatDate(attendee.createdAt)}</TableBody>
+                <TableBody>{!attendee.checkedInAt ? 
+                <span className="text-zinc-400"> Não fez check-in </span>
+                : formatDate(attendee.checkedInAt)}</TableBody>
                 <TableBody style={{ width: 64 }}>
                   <IconButton transparent>
                     <MoreHorizontal className="size-4" />
@@ -101,7 +171,7 @@ export function AttendeeList() {
         <tfoot>
           <tr>
             <TableBody colSpan={3}>
-              Mostrando {page * 10} de {attendees.length} itens
+              Mostrando {attendees.length} de {total} itens
             </TableBody>
             <TableBody className="text-right"
               colSpan={3}
